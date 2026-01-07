@@ -21,7 +21,7 @@ export default function Home() {
 
   const fetchNotes = async () => {
     try {
-      const res = await fetch('/api/notes');
+      const res = await fetch('./api/notes');
       const data = await res.json();
       if (data.success) {
         setNotes(data.data);

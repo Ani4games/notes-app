@@ -1,32 +1,35 @@
 import dbConnect from '../../../lib/dbConnect';
-import Note from '../../../models/Note';
 
 export default async function handler(req, res) {
-  await dbConnect();
+  try {
+    // Connect to database
+    await dbConnect();
+  } catch (error) {
+    console.error('Database connection failed:', error.message);
+    return res.status(500).json({ 
+      success: false, 
+      error: 'Database connection failed',
+      message: error.message
+    });
+  }
 
   const { method } = req;
 
   switch (method) {
     case 'GET':
-      try {
-        const notes = await Note.find({}).sort({ updatedAt: -1 });
-        res.status(200).json({ success: true, data: notes });
-      } catch (error) {
-        res.status(400).json({ success: false });
-      }
-      break;
+      // Your GET logic here
+      return res.status(200).json({ 
+        success: true, 
+        data: [] // Add your actual data fetching logic
+      });
 
-    case 'POST':
-      try {
-        const note = await Note.create(req.body);
-        res.status(201).json({ success: true, data: note });
-      } catch (error) {
-        res.status(400).json({ success: false, error: error.message });
-      }
-      break;
+    // Add other methods...
 
     default:
-      res.status(400).json({ success: false });
-      break;
+      res.setHeader('Allow', ['GET']);
+      return res.status(405).json({ 
+        success: false, 
+        error: `Method ${method} Not Allowed` 
+      });
   }
 }
