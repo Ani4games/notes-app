@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import NoteForm from '../components/NoteForm';
 import NoteItem from '../components/NoteItem';
-import { FiPlus, FiSearch, FiLoader } from 'react-icons/fi';
+import { FiPlus, FiSearch, FiLoader, FiAlertCircle, FiDatabase } from 'react-icons/fi';
 
 export default function Home() {
   const [notes, setNotes] = useState([]);
@@ -10,8 +10,12 @@ export default function Home() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [sortOrder, setSortOrder] = useState('newest');
+  const [error, setError] = useState(null);
+  const [dbStatus, setDbStatus] = useState('checking'); // 'checking', 'connected', 'error'
 
+  // Check database connection on mount
   useEffect(() => {
+    checkDatabaseConnection();
     fetchNotes();
   }, []);
 
@@ -19,20 +23,45 @@ export default function Home() {
     filterAndSortNotes();
   }, [notes, searchQuery, sortOrder]);
 
-  const fetchNotes = async () => {
+  const checkDatabaseConnection = async () => {
     try {
       const res = await fetch('/api/notes');
+      if (res.ok) {
+        setDbStatus('connected');
+      } else {
+        setDbStatus('error');
+      }
+    } catch (error) {
+      setDbStatus('error');
+    }
+  };
+
+  const fetchNotes = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const res = await fetch('/api/notes');
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       if (data.success) {
         setNotes(data.data);
+      } else {
+        setError(data.error || 'Failed to fetch notes');
       }
     } catch (error) {
       console.error('Error fetching notes:', error);
+      setError(error.message || 'Failed to load notes. Please check MongoDB connection.');
     } finally {
       setIsLoading(false);
     }
   };
 
+  // ADDED THIS MISSING FUNCTION
   const filterAndSortNotes = () => {
     let filtered = [...notes];
     
@@ -61,6 +90,7 @@ export default function Home() {
 
   const handleCreateNote = async (noteData) => {
     try {
+      setError(null);
       const res = await fetch('/api/notes', {
         method: 'POST',
         headers: {
@@ -68,18 +98,29 @@ export default function Home() {
         },
         body: JSON.stringify(noteData),
       });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       if (data.success) {
         setNotes([data.data, ...notes]);
         setEditingNote(null);
+      } else {
+        setError(data.error || 'Failed to create note');
       }
     } catch (error) {
       console.error('Error creating note:', error);
+      setError(error.message || 'Failed to create note');
+      throw error;
     }
   };
 
   const handleUpdateNote = async (noteData) => {
     try {
+      setError(null);
       const res = await fetch(`/api/notes/${editingNote._id}`, {
         method: 'PUT',
         headers: {
@@ -87,15 +128,25 @@ export default function Home() {
         },
         body: JSON.stringify(noteData),
       });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       if (data.success) {
         setNotes(notes.map(note => 
           note._id === editingNote._id ? data.data : note
         ));
         setEditingNote(null);
+      } else {
+        setError(data.error || 'Failed to update note');
       }
     } catch (error) {
       console.error('Error updating note:', error);
+      setError(error.message || 'Failed to update note');
+      throw error;
     }
   };
 
@@ -103,16 +154,30 @@ export default function Home() {
     if (!confirm('Are you sure you want to delete this note? This action cannot be undone.')) return;
 
     try {
+      setError(null);
       const res = await fetch(`/api/notes/${noteId}`, {
         method: 'DELETE',
       });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       if (data.success) {
         setNotes(notes.filter(note => note._id !== noteId));
+      } else {
+        setError(data.error || 'Failed to delete note');
       }
     } catch (error) {
       console.error('Error deleting note:', error);
+      setError(error.message || 'Failed to delete note');
     }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingNote(null);
   };
 
   return (
@@ -120,12 +185,43 @@ export default function Home() {
       <div className="max-w-6xl mx-auto">
         <header className="mb-10 text-center">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-800 mb-3">
-            📝 Notes App
+            📝 Notes App with MongoDB
           </h1>
           <p className="text-gray-600 text-lg">
-            A simple, fast, and beautiful way to manage your notes
+            Full-stack application with real database
           </p>
+          
+          {/* Database Status Indicator */}
+          <div className="mt-4 inline-flex items-center px-4 py-2 rounded-full text-sm font-medium">
+            <FiDatabase className={`mr-2 ${
+              dbStatus === 'connected' ? 'text-green-500' : 
+              dbStatus === 'error' ? 'text-red-500' : 'text-yellow-500'
+            }`} />
+            <span className={
+              dbStatus === 'connected' ? 'text-green-700' : 
+              dbStatus === 'error' ? 'text-red-700' : 'text-yellow-700'
+            }>
+              {dbStatus === 'connected' ? '✅ MongoDB Connected' : 
+               dbStatus === 'error' ? '❌ MongoDB Connection Error' : 
+               '🔄 Checking Database...'}
+            </span>
+          </div>
         </header>
+
+        {error && (
+          <div className="mb-6 bg-red-50 border border-red-200 rounded-lg p-4">
+            <div className="flex items-center">
+              <FiAlertCircle className="text-red-500 mr-2" />
+              <p className="text-red-700 font-medium">Error: {error}</p>
+            </div>
+            <button
+              onClick={() => setError(null)}
+              className="mt-2 text-sm text-red-600 hover:text-red-800"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         <main>
           {editingNote ? (
@@ -133,14 +229,14 @@ export default function Home() {
               <NoteForm
                 note={editingNote}
                 onSubmit={editingNote._id ? handleUpdateNote : handleCreateNote}
-                onCancel={() => setEditingNote(null)}
+                onCancel={handleCancelEdit}
               />
             </div>
           ) : (
             <div className="mb-8 flex flex-col sm:flex-row gap-4 justify-between items-center">
               <button
                 onClick={() => setEditingNote({})}
-                className="btn-primary flex items-center"
+                className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200 flex items-center"
               >
                 <FiPlus className="mr-2" />
                 Create New Note
@@ -154,14 +250,14 @@ export default function Home() {
                     placeholder="Search notes..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="input-field pl-10"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 pl-10"
                   />
                 </div>
                 
                 <select
                   value={sortOrder}
                   onChange={(e) => setSortOrder(e.target.value)}
-                  className="input-field"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
                 >
                   <option value="newest">Newest First</option>
                   <option value="oldest">Oldest First</option>
@@ -195,7 +291,7 @@ export default function Home() {
               {!editingNote && (
                 <button
                   onClick={() => setEditingNote({})}
-                  className="btn-primary"
+                  className="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md hover:shadow-lg transition-all duration-200"
                 >
                   Create Your First Note
                 </button>
